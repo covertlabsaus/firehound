@@ -1,0 +1,41 @@
+# Keep Docker build context small
+
+# Git
+.git
+.gitignore
+
+# Python caches/venv
+__pycache__
+*.pyc
+.venv
+venv
+.env
+.env.*
+*.env
+
+# IDE/OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Pipeline outputs and large artifacts
+scan_*/
+**/scan_*/
+**/logs/
+*_audit.json
+*_vuln_summary.json
+**/all_plists/
+**/Payload/
+**/META-INF/
+**/SC_Info/
+*.ipa
+*.log
+
+# Large sample folders in repo
+com.jonathankopp.quitvaping/
+com.sugarfree.app/
+manevolves.mdf/
+
+# Devcontainer config not needed inside runtime image
+.devcontainer/

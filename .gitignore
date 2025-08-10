@@ -1,0 +1,70 @@
+# Pipeline outputs (keep results out of git)
+scan_*/
+**/scan_*/
+**/logs/
+
+# Extracted IPA contents and large artifacts
+**/all_plists/
+**/Payload/
+**/META-INF/
+**/SC_Info/
+
+# Generated summaries
+*_audit.json
+*_vuln_summary.json
+
+# Local Python bits
+__pycache__/
+*.pyc
+
+# Local environment
+.env
+
+# Python virtual environments and caches
+.venv/
+venv/
+env/
+.pyenv/
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+dist/
+build/
+
+# Editor/OS files
+.vscode/
+.idea/
+.history
+*.swp
+.DS_Store
+Thumbs.db
+
+# Env files and local inputs
+.env
+.env.*
+*.env
+ids.txt
+ids_*.txt
+
+# Binary artifacts from downloads
+*.ipa
+**/ipatool
+
+# General logs outside scan dirs
+*.log
+
+# Extracted iOS plists (safe for this repo; comment out if you commit iOS source)
+**/*.plist
+
+
+
+# Large sample folders in repo
+com.jonathankopp.quitvaping/
+com.sugarfree.app/
+manevolves.mdf/
+
+private/
+/scanner/private

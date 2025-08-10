@@ -1,0 +1,4 @@
+# One bundle identifier per line. Lines starting with # are comments.
+com.example.app
+com.another.app
+
