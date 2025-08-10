@@ -2,7 +2,7 @@
 
 A tiny wrapper to run the existing pipeline in three steps without changing the original scripts:
 
-- Keep `fetch.py`, `audit.py`, `summarize.py` as-is
+- Keep scripts as-is (now under `scripts/`): `scripts/fetch.py`, `scripts/audit.py`, `scripts/summarize.py`
 - One command: `./pipeline.sh` (or `make pipeline`)
 - Logs saved under `scan_xxx/logs/`
 
@@ -36,9 +36,9 @@ If you don’t already have bundle IDs, you can search the App Store via `ipatoo
 
 ```bash
 # Example: search for “zoom” and write 5 results to bundles.txt
-python3 search_bundles.py --query "zoom" --limit 5 --output bundles.txt
+python3 scripts/search_bundles.py --query "zoom" --limit 5 --output bundles.txt
 # If your ipatool is old or missing, auto-fallback uses iTunes Search API:
-python3 search_bundles.py --engine auto --query "zoom" --limit 5 --output bundles.txt
+python3 scripts/search_bundles.py --engine auto --query "zoom" --limit 5 --output bundles.txt
 
 # Then run the pipeline with those IDs
 ./pipeline.sh --base "$PWD" --ids bundles.txt

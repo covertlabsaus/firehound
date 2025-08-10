@@ -78,19 +78,25 @@ trap 'fail "Pipeline failed. See logs above. If step 1 failed, check the tempora
 info "Base dir: $BASE"
 info "Workers: $WORKERS | ipatool parallelism: $IPATOOL_PAR | Verbose: $VERBOSE | Full counts: ${FULL_COUNTS:-0}"
 
-# Resolve script locations. Prefer scripts under BASE, fall back to repo dir for robustness.
+# Resolve script locations. Prefer scripts under BASE, then repo dir, then repo scripts/ subdir for robustness.
 SCRIPTS_DIR="$BASE"
 one_py="$SCRIPTS_DIR/fetch.py"
 scan_py="$SCRIPTS_DIR/audit.py"
 clean_py="$SCRIPTS_DIR/summarize.py"
 
 if [[ ! -f "$one_py" || ! -f "$scan_py" || ! -f "$clean_py" ]]; then
+  # Fallback 1: repo root alongside pipeline.sh
   if [[ -f "$script_dir/fetch.py" && -f "$script_dir/audit.py" && -f "$script_dir/summarize.py" ]]; then
     warn "Scripts not found in BASE; using repository directory for scripts instead. Outputs remain under: $BASE"
     SCRIPTS_DIR="$script_dir"
     one_py="$SCRIPTS_DIR/fetch.py"; scan_py="$SCRIPTS_DIR/audit.py"; clean_py="$SCRIPTS_DIR/summarize.py"
+  # Fallback 2: repo scripts/ subdirectory
+  elif [[ -f "$script_dir/scripts/fetch.py" && -f "$script_dir/scripts/audit.py" && -f "$script_dir/scripts/summarize.py" ]]; then
+    warn "Scripts not found in BASE; using repository scripts/ directory instead. Outputs remain under: $BASE"
+    SCRIPTS_DIR="$script_dir/scripts"
+    one_py="$SCRIPTS_DIR/fetch.py"; scan_py="$SCRIPTS_DIR/audit.py"; clean_py="$SCRIPTS_DIR/summarize.py"
   else
-    fail "Could not locate fetch.py, audit.py, and summarize.py in '$BASE' or '$script_dir'"; exit 1
+    fail "Could not locate fetch.py, audit.py, and summarize.py in '$BASE', '$script_dir', or '$script_dir/scripts'"; exit 1
   fi
 fi
 info "Scripts dir: $SCRIPTS_DIR"
