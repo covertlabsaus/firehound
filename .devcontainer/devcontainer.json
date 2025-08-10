@@ -1,0 +1,30 @@
+{
+    "name": "scanner-dev",
+    "build": {
+      "dockerfile": "Dockerfile",
+      "context": ".."
+    },
+    "remoteUser": "root",
+    "customizations": {
+      "vscode": {
+        "settings": {
+          "terminal.integrated.defaultProfile.linux": "bash",
+          "python.defaultInterpreterPath": "/usr/local/bin/python3"
+        },
+        "extensions": [
+          "ms-python.python",
+          "ms-python.vscode-pylance"
+        ]
+      }
+    },
+    "containerEnv": {
+      "PYTHONUNBUFFERED": "1",
+      "VERBOSE": "1",
+      "WORKERS": "8",
+      "IPATOOL_PAR": "2"
+    },
+    "postCreateCommand": "bash ./scripts/install_ipatool.sh || true",
+    "updateRemoteUserUID": true
+  }
+  
+  
