@@ -36,6 +36,3 @@ scan_*/
 com.jonathankopp.quitvaping/
 com.sugarfree.app/
 manevolves.mdf/
-
-# Devcontainer config not needed inside runtime image
-.devcontainer/
