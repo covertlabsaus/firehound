@@ -1,0 +1,7 @@
+# Include important files in the package distribution
+include README.md
+include LICENSE*
+recursive-exclude * __pycache__
+recursive-exclude * *.pyc
+# Exclude legacy folder from package distribution
+prune legacy
