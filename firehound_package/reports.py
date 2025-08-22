@@ -5,6 +5,7 @@ Contains all report generation, risk scoring, and terminal output functionality.
 """
 
 import json, time, os, sys, re
+from typing import Optional
 from collections import defaultdict
 from pathlib import Path
 

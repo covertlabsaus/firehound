@@ -12,6 +12,7 @@ from typing import Optional, Tuple, Iterable, List
 # Import our modules
 from .scanner import audit_folder, load_wordlists, set_logger, set_vprint
 from .reports import FindingSummary, generate_enhanced_report, display_app_results_enhanced, display_final_scan_summary
+from .mobsf_integration import upload_and_scan_async_with_mobsf, get_mobsf_config, is_mobsf_available
 
 # --- Globals ---
 USER_AGENT = "f3tcher/1.1"
@@ -39,6 +40,7 @@ def setup_logging(base_dir: Path):
     # Setup logger
     _logger = logging.getLogger("firehound")
     _logger.setLevel(logging.DEBUG)
+    _logger.propagate = False  # Don't propagate to root logger (prevents console spam)
     
     # Remove any existing handlers
     _logger.handlers.clear()
@@ -279,7 +281,8 @@ def sanitize_filename_component(name: str) -> str:
     name = re.sub(r"[^\w\-. ]", "-", name)
     return name or "app"
 
-def process_bundle_id(bundle_id: str, scan_dir: Path, keychain_passphrase: str, apple_id_password: str, timeout_seconds: int, wl, country: Optional[str]) -> Optional[dict]:
+def process_bundle_id(bundle_id: str, scan_dir: Path, keychain_passphrase: str, apple_id_password: str, timeout_seconds: int, wl, country: Optional[str], 
+                      mobsf_enabled: bool = False, mobsf_server_url: Optional[str] = None, mobsf_api_key: Optional[str] = None) -> Optional[dict]:
     log_detailed(f"PROCESSING: Starting bundle ID {bundle_id}", "INFO")
     
     # Create temporary directory for this app
@@ -346,28 +349,11 @@ def process_bundle_id(bundle_id: str, scan_dir: Path, keychain_passphrase: str, 
     convert_plist_to_xml_if_binary(temp_dir / "Info.plist")
     convert_plist_to_xml_if_binary(temp_dir / "GoogleService-Info.plist")
     
-    # Remove IPA file to save space
-    try:
-        if ipa_path.exists(): 
-            ipa_path.unlink()
-    except Exception: 
-        pass
+
     
     vprint(f"EXTRACTED: {bundle_id} -> {temp_dir}", GREEN)
     
-    # Perform security audit
-    audit_result = audit_folder(temp_dir, wl, keep_plists=os.environ.get("KEEP_PLISTS", "0") == "1")
-    
-    if not audit_result or not audit_result.get("vulnerabilities"):
-        # No findings - clean up temp directory
-        try:
-            shutil.rmtree(temp_dir)
-            vprint(f"No findings. Removed {temp_dir}", GREY)
-        except Exception as exc:
-            vprint(f"Cleanup failed for {temp_dir}: {exc}", YELLOW)
-        return {"bundleId": bundle_id, "appName": bundle_id, "report_path": None, "has_findings": False}
-
-    # Get app name from Info.plist
+    # Get app name from Info.plist first (needed for MobSF)
     display_name = None
     try:
         info_plist_path = temp_dir / "Info.plist"
@@ -379,6 +365,52 @@ def process_bundle_id(bundle_id: str, scan_dir: Path, keychain_passphrase: str, 
         display_name = None
     
     app_name = display_name or bundle_id
+    
+    # MobSF Integration - async upload and scan initiation
+    mobsf_info = None
+    if mobsf_enabled and mobsf_server_url and mobsf_api_key:
+        try:
+            vprint(f"🔬 Starting MobSF analysis on {app_name}", CYAN)
+            mobsf_info = upload_and_scan_async_with_mobsf(
+                ipa_path=ipa_path,
+                app_name=app_name, 
+                bundle_id=bundle_id,
+                server_url=mobsf_server_url,
+                api_key=mobsf_api_key,
+                timeout=60  # Quick timeout for upload/scan start only
+            )
+            
+            if mobsf_info:
+                vprint(f"✅ MobSF scan initiated - processing in background", GREEN)
+                vprint(f"   View results at: {mobsf_server_url}/recent_scans/", CYAN)
+                log_detailed(f"MOBSF_INITIATED: {bundle_id} - Hash: {mobsf_info['file_hash']}", "INFO")
+            else:
+                vprint(f"⚠️ MobSF scan failed to start for {bundle_id}", YELLOW)
+                log_detailed(f"MOBSF_FAILED: {bundle_id}", "WARNING")
+        except Exception as e:
+            vprint(f"⚠️ MobSF integration error: {e}", YELLOW)
+            log_detailed(f"MOBSF_ERROR: {bundle_id} - {e}", "ERROR")
+    
+    # Remove IPA file to save space (after MobSF analysis if enabled)
+    try:
+        if ipa_path.exists(): 
+            ipa_path.unlink()
+            log_detailed(f"IPA_CLEANUP: Removed {ipa_path}", "DEBUG")
+    except Exception: 
+        pass
+    
+    # Perform security audit
+    audit_result = audit_folder(temp_dir, wl, keep_plists=os.environ.get("KEEP_PLISTS", "0") == "1")
+    
+    if not audit_result or not audit_result.get("vulnerabilities"):
+        # No findings - clean up temp directory
+        try:
+            shutil.rmtree(temp_dir)
+            vprint(f"No Firebase findings. Removed {temp_dir}", GREY)
+        except Exception as exc:
+            vprint(f"Cleanup failed for {temp_dir}: {exc}", YELLOW)
+        
+        return {"bundleId": bundle_id, "appName": app_name, "report_path": None, "has_findings": False}
     
     # Generate enhanced report
     scan_metadata = {
@@ -573,6 +605,8 @@ Environment Variables (used as defaults):
     
     parser.add_argument("--timeout", type=int, default=60, help="Network timeout in seconds (default: 60).")
     parser.add_argument("--output-dir", "-o", default=os.getcwd(), help="Base output directory.")
+    parser.add_argument("--mobsf-scan", action="store_true", 
+                       help="Also run MobSF static analysis on downloaded IPAs. Requires MOBSF_API_KEY environment variable.")
     
     args = parser.parse_args()
 
@@ -619,6 +653,28 @@ Environment Variables (used as defaults):
     log_detailed(f"ARGS: {safe_args}", "INFO")
 
     check_ipatool_auth(args.keychain_passphrase, args.apple_id_password, args.email)
+    
+    # Validate MobSF configuration if requested
+    mobsf_server_url, mobsf_api_key, mobsf_enabled = None, None, False
+    if args.mobsf_scan:
+        mobsf_server_url, mobsf_api_key = get_mobsf_config()
+        
+        if not mobsf_api_key:
+            print(f"{RED}❌ MobSF integration requires MOBSF_API_KEY environment variable{RESET}")
+            print(f"\n{CYAN}💡 Setup:{RESET}")
+            print(f"  export MOBSF_API_KEY='your-api-key-from-mobsf'")
+            print(f"  export MOBSF_SERVER_URL='https://scan.covertlabs.io'  # (optional, defaults to this)")
+            sys.exit(1)
+        
+        vprint(f"🔧 Checking MobSF connection to {mobsf_server_url}...", CYAN)
+        if not is_mobsf_available(mobsf_server_url, mobsf_api_key):
+            print(f"{RED}❌ Cannot connect to MobSF at {mobsf_server_url}{RESET}")
+            print(f"   Check server URL and API key")
+            sys.exit(1)
+        
+        vprint("✅ MobSF integration ready", GREEN)
+        vprint("")
+        mobsf_enabled = True
 
     wl = load_wordlists()
     bundle_ids = []
@@ -647,7 +703,8 @@ Environment Variables (used as defaults):
     
     for i, bid in enumerate(bundle_ids, 1):
         log_detailed(f"SCAN_PROGRESS: Processing {i}/{len(bundle_ids)} - {bid}", "INFO")
-        res = process_bundle_id(bid, scan_dir, args.keychain_passphrase, args.apple_id_password, args.timeout, wl, args.country)
+        res = process_bundle_id(bid, scan_dir, args.keychain_passphrase, args.apple_id_password, args.timeout, wl, args.country, 
+                               mobsf_enabled, mobsf_server_url, mobsf_api_key)
         if res is None:
             log_detailed(f"SCAN_RESULT: {bid} - Failed (download error)", "ERROR")
             scan_index.append({"bundleId": bid, "appName": bid, "report_path": None, "has_findings": False, "error": "download_failed"})
@@ -673,6 +730,14 @@ Environment Variables (used as defaults):
         
         # Display enhanced final summary
         display_final_scan_summary(scan_summary, scan_dir)
+        
+        # MobSF background scan reminder
+        if mobsf_enabled:
+            vprint("", RESET)
+            vprint("🔬 MobSF Analysis:", BOLD)
+            vprint(f"   Background scans initiated for {scan_summary['totalProcessed']} apps", CYAN)
+            vprint(f"   View results at: {mobsf_server_url}/recent_scans/", CYAN)
+            vprint("   ⏳ Scans may still be processing - check web interface for completion", YELLOW)
         
     except Exception as exc:
         log_detailed(f"INDEX_ERROR: Failed to write scan index: {exc}", "ERROR")
